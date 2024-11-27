@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve,
 from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QRadialGradient, QPainterPath, QTextCharFormat, QFont
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QTextEdit, QPushButton, QComboBox, QLabel, QHBoxLayout, QFrame)
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 
 class WaveformWidget(QWidget):
@@ -141,189 +142,195 @@ class WhisperGUI(QMainWindow):
         self.init_whisper()
 
     def init_ui(self):
-        self.setWindowTitle('Whisper Realtime Transcription')
-        self.setMinimumSize(800, 600)
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #1a1a1a;
-            }
-            QTextEdit {
-                background-color: #262626;
-                color: #ffffff;
-                border: none;
-                border-radius: 15px;
-                padding: 15px;
-                font-size: 14px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
-                selection-background-color: #404040;
-            }
-            QPushButton {
-                background-color: #34c759;  /* Apple green */
-                color: white;
-                border: none;
-                border-radius: 20px;
-                padding: 12px 25px;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #2fb350;
-            }
-            QPushButton:pressed {
-                background-color: #2aa147;
-            }
-            QComboBox {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 5px 10px;
-                min-width: 100px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border: none;
-            }
-            QComboBox:hover {
-                background-color: rgba(255, 255, 255, 0.15);
-            }
-            QComboBox QAbstractItemView {
-                background-color: #262626;
-                color: white;
-                selection-background-color: #34c759;
-                border: none;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QLabel {
-                color: #e0e0e0;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QScrollBar:vertical {
-                border: none;
-                background-color: #262626;
-                width: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 4px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                border: none;
-                background: none;
-            }
-        """)
+        # Layout chính
+        main_layout = QVBoxLayout()
 
-        # Main widget and layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 20, 30, 30)
+        # Frame cho controls
+        controls_frame = QFrame()
+        controls_frame.setFrameStyle(QFrame.Panel | QFrame.Raised)
+        controls_layout = QHBoxLayout()
 
-        # Top toolbar with controls
-        toolbar = QWidget()
-        toolbar.setStyleSheet("""
-            QWidget {
-                background-color: rgba(45, 45, 45, 0.7);
-                border-radius: 10px;
-            }
-        """)
-        toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(15, 10, 15, 10)
-        toolbar_layout.setSpacing(15)
-
-        # Model selection with icon
-        model_layout = QHBoxLayout()
-        model_layout.setSpacing(8)
-        model_icon = QLabel("🎯")
-        model_icon.setStyleSheet("background: transparent;")
+        # Model selection
+        model_label = QLabel("Model:")
         self.model_combo = QComboBox()
         self.model_combo.addItems(["tiny", "base", "small", "medium", "large"])
-        self.model_combo.setCurrentText("small")
-        model_layout.addWidget(model_icon)
-        model_layout.addWidget(self.model_combo)
-        toolbar_layout.addLayout(model_layout)
+        self.model_combo.currentTextChanged.connect(self.load_model)
 
-        # Vertical separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.VLine)
-        separator.setStyleSheet("background-color: rgba(255, 255, 255, 0.1);")
-        toolbar_layout.addWidget(separator)
-
-        # Language selection with icon
-        lang_layout = QHBoxLayout()
-        lang_layout.setSpacing(8)
-        lang_icon = QLabel("🌍")
-        lang_icon.setStyleSheet("background: transparent;")
+        # Language selection
+        lang_label = QLabel("Language:")
         self.lang_combo = QComboBox()
-        self.lang_combo.addItems(["fr", "en", "vi", "auto"])
-        lang_layout.addWidget(lang_icon)
-        lang_layout.addWidget(self.lang_combo)
-        toolbar_layout.addLayout(lang_layout)
+        self.lang_combo.addItems(["english", "vietnamese", "french"])
+        self.lang_combo.currentTextChanged.connect(self.on_language_change)
 
-        # Add stretch to push controls to the left
-        toolbar_layout.addStretch()
+        # Record button
+        self.record_button = QPushButton("Start Recording")
+        self.record_button.clicked.connect(self.toggle_recording)
 
-        # Recording button in toolbar
-        self.toggle_button = QPushButton("Start Recording")
-        self.toggle_button.setMinimumWidth(150)
-        self.toggle_button.clicked.connect(self.toggle_recording)
-        toolbar_layout.addWidget(self.toggle_button)
-
-        layout.addWidget(toolbar)
-
-        # Waveform
-        self.waveform = WaveformWidget()
-        layout.addWidget(self.waveform)
+        # Add controls to layout
+        controls_layout.addWidget(model_label)
+        controls_layout.addWidget(self.model_combo)
+        controls_layout.addWidget(lang_label)
+        controls_layout.addWidget(self.lang_combo)
+        controls_layout.addWidget(self.record_button)
+        controls_frame.setLayout(controls_layout)
 
         # Text display
         self.text_display = QTextEdit()
         self.text_display.setReadOnly(True)
-        self.text_display.setMinimumHeight(250)
-        layout.addWidget(self.text_display)
+        # Set dark theme
+        self.text_display.setStyleSheet(
+            "QTextEdit { background-color: #2b2b2b; color: white; }")
+
+        # Waveform
+        self.waveform = WaveformWidget()
+
+        # Add everything to main layout
+        main_layout.addWidget(controls_frame)
+        main_layout.addWidget(self.waveform)
+        main_layout.addWidget(self.text_display)
+
+        # Central widget
+        central_widget = QWidget()
+        central_widget.setLayout(main_layout)
+        self.setCentralWidget(central_widget)
+
+        # Window properties
+        self.setWindowTitle("Whisper GUI")
+        self.setGeometry(100, 100, 800, 600)
 
         # Connect signal
         self.update_text.connect(self.update_display)
 
+    def on_language_change(self, language):
+        print(f"Changing language to: {language}")
+        if self.model is not None and self.processor is not None:
+            # Reset các biến streaming
+            self.stable_tokens = None
+            self.unstable_tokens = None
+            self.eos_token = None
+
+            # Xóa text hiện tại
+            self.text_display.clear()
+            print(f"Language updated to {language}")
+
     def init_whisper(self):
         self.recording = False
         self.audio_queue = queue.Queue()
-        self.samplerate = 16000
+        self.sample_rate = 16000
         self.channels = 1
-        self.blocksize = 3 * self.samplerate
+        self.blocksize = int(self.sample_rate * 0.3)  # 0.3 giây mỗi chunk
         self.model = None
+        self.processor = None
         self.process_thread = None
+        self.stable_tokens = None
+        self.unstable_tokens = None
+        self.eos_token = None
+        # Load model ngay khi khởi tạo
+        self.load_model()
 
     def load_model(self):
         model_name = self.model_combo.currentText()
+        print(f"Loading model {model_name}...")
         try:
-            # Thử sử dụng MPS
-            if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-                device = torch.device("mps")
-                self.model = whisper.load_model(model_name)
-                # Chuyển model sang MPS một cách an toàn hơn
-                try:
-                    self.model = self.model.to(device)
-                    print("Đang sử dụng Apple GPU (MPS)")
-                except Exception as e:
-                    print(f"Không thể sử dụng GPU, chuyển sang CPU: {str(e)}")
-                    self.model = self.model.to("cpu")
-            else:
-                self.model = whisper.load_model(model_name, device="cpu")
-                print("Sử dụng CPU vì không có GPU")
+            # Đổi tên model để phù hợp với transformers
+            if model_name == "tiny":
+                model_name = "openai/whisper-tiny"
+            elif model_name == "base":
+                model_name = "openai/whisper-base"
+            elif model_name == "small":
+                model_name = "openai/whisper-small"
+            elif model_name == "medium":
+                model_name = "openai/whisper-medium"
+            elif model_name == "large":
+                model_name = "openai/whisper-large"
+
+            self.processor = WhisperProcessor.from_pretrained(model_name)
+            self.model = WhisperForConditionalGeneration.from_pretrained(
+                model_name)
+
+            if torch.cuda.is_available():
+                self.model = self.model.to("cuda")
+
+            # Reset các biến streaming
+            self.stable_tokens = None
+            self.unstable_tokens = None
+            self.eos_token = None
+
+            print("Model loaded successfully!")
         except Exception as e:
-            print(f"Lỗi khi tải model: {str(e)}")
-            self.model = whisper.load_model(model_name, device="cpu")
-            print("Sử dụng CPU do lỗi")
+            print(f"Error loading model: {str(e)}")
+            raise e
+
+    def process_audio(self):
+        """Process audio data from the queue"""
+        if self.model is None or self.processor is None:
+            print("Model not loaded. Please load the model first.")
+            return
+
+        audio_buffer = np.array([], dtype=np.float32)
+        try:
+            while self.recording:
+                # Get audio data from queue
+                if self.audio_queue.empty():
+                    time.sleep(0.1)
+                    continue
+
+                # Lấy audio data mới và thêm vào buffer
+                audio_data = self.audio_queue.get()
+                audio_data = audio_data.flatten().astype(np.float32)
+                audio_buffer = np.concatenate([audio_buffer, audio_data])
+
+                # Giới hạn độ dài buffer để tránh quá tải
+                max_buffer_size = self.sample_rate * 30  # 30 giây
+                if len(audio_buffer) > max_buffer_size:
+                    audio_buffer = audio_buffer[-max_buffer_size:]
+
+                try:
+                    # Xử lý audio thành features
+                    inputs = self.processor(
+                        audio_buffer,
+                        sampling_rate=self.sample_rate,
+                        return_tensors="pt"
+                    )
+                    input_features = inputs.input_features
+
+                    # Tạo attention mask
+                    attention_mask = torch.ones_like(
+                        input_features, dtype=torch.long)
+
+                    if torch.cuda.is_available():
+                        input_features = input_features.to("cuda")
+                        attention_mask = attention_mask.to("cuda")
+
+                    # Generate token ids
+                    predicted_ids = self.model.generate(
+                        input_features,
+                        attention_mask=attention_mask,
+                        task="transcribe",
+                        language=self.lang_combo.currentText().lower(),
+                        return_timestamps=False,
+                        max_new_tokens=128,
+                        num_beams=1,  # Giảm số beam để tăng tốc độ
+                        do_sample=False  # Tắt sampling để ổn định hơn
+                    )
+
+                    # Decode token ids to text
+                    transcription = self.processor.batch_decode(
+                        predicted_ids,
+                        skip_special_tokens=True
+                    )[0]
+
+                    # Update the display with new text
+                    self.update_text.emit(transcription)
+
+                except Exception as e:
+                    print(f"Error in transcription: {str(e)}")
+                    traceback.print_exc()
+                    continue
+
+        except Exception as e:
+            print(f"Error in process_audio: {str(e)}")
+            traceback.print_exc()
 
     def toggle_recording(self):
         if not self.recording:
@@ -336,7 +343,7 @@ class WhisperGUI(QMainWindow):
             self.load_model()
 
         self.recording = True
-        self.toggle_button.setText("Stop Recording")
+        self.record_button.setText("Stop Recording")
         self.waveform.start_animation()
 
         # Start processing thread
@@ -345,7 +352,7 @@ class WhisperGUI(QMainWindow):
 
         # Start audio input stream
         self.stream = sd.InputStream(
-            samplerate=self.samplerate,
+            samplerate=self.sample_rate,
             channels=self.channels,
             callback=self.audio_callback,
             blocksize=self.blocksize
@@ -354,7 +361,7 @@ class WhisperGUI(QMainWindow):
 
     def stop_recording(self):
         self.recording = False
-        self.toggle_button.setText("Start Recording")
+        self.record_button.setText("Start Recording")
         self.waveform.stop_animation()
 
         if hasattr(self, 'stream'):
@@ -365,67 +372,28 @@ class WhisperGUI(QMainWindow):
             self.process_thread.join()
 
     def audio_callback(self, indata, frames, time, status):
+        """Callback for audio input"""
         if status:
             print(status)
+        # Add the new audio data to the queue
         self.audio_queue.put(indata.copy())
         self.waveform.update_audio_data(indata.copy())
 
-    def process_audio(self):
-        while self.recording:
-            if not self.audio_queue.empty():
-                audio_data = self.audio_queue.get()
-                audio_data = audio_data.flatten().astype(np.float32)
-
-                try:
-                    result = self.model.transcribe(
-                        audio_data,
-                        language=self.lang_combo.currentText(),
-                        fp16=False,
-                        condition_on_previous_text=True,
-                        best_of=1,
-                        beam_size=1,
-                        temperature=0.0,
-                        compression_ratio_threshold=2.4,
-                        no_speech_threshold=0.6
-                    )
-
-                    if result["text"].strip():
-                        timestamp = datetime.now().strftime("%H:%M:%S")
-                        text = f"[{timestamp}] {result['text']}\n"
-                        self.update_text.emit(text)
-                except Exception as e:
-                    print(f"Error in transcription: {str(e)}")
-
     def update_display(self, text):
         cursor = self.text_display.textCursor()
+
+        # Xóa text cũ
+        self.text_display.clear()
+
+        # Set format cho text (màu trắng)
+        text_format = QTextCharFormat()
+        text_format.setForeground(QColor("white"))
+
+        # Chèn text mới
+        cursor.insertText(text, text_format)
+
+        # Đặt con trỏ về cuối và scroll
         cursor.movePosition(cursor.MoveOperation.End)
-
-        # Add two newlines before new timestamp for better readability
-        if self.text_display.toPlainText():  # If there's existing text
-            cursor.insertText("\n\n")  # Add extra newlines between entries
-
-        # Split timestamp and content
-        timestamp, content = text.split("]", 1)
-        timestamp += "]"
-
-        # Set format for timestamp (gray color)
-        timestamp_format = QTextCharFormat()
-        timestamp_format.setForeground(
-            QColor(128, 128, 128))  # Gray color for timestamp
-        timestamp_format.setFontWeight(QFont.Bold)
-
-        # Set format for content (white color)
-        content_format = QTextCharFormat()
-        content_format.setForeground(
-            QColor(255, 255, 255))  # White color for content
-
-        # Insert timestamp with gray format
-        cursor.insertText(timestamp, timestamp_format)
-
-        # Insert content with white format
-        cursor.insertText(content, content_format)
-
-        # Scroll to the new text
         self.text_display.setTextCursor(cursor)
         self.text_display.ensureCursorVisible()
 
