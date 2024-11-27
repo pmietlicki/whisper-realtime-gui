@@ -96,3 +96,10 @@ wheels/
 
 .venv
 venv
+
+icons/*
+download_models.py 
+post_build.py 
+Speech-to-Text.spec
+build/*
+dist/*
