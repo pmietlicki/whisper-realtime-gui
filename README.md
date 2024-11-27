@@ -9,19 +9,25 @@ A modern, real-time speech recognition application built with OpenAI's Whisper a
 - 🎙 Real-time audio transcription using OpenAI's Whisper
 - 🌈 Beautiful, modern UI with animated audio visualizer
 - 🚀 GPU acceleration support (Apple Silicon/CUDA)
-- 🌍 Multi-language support (English, French, Vietnamese, and auto-detection)
-- 📊 Live audio waveform visualization
+- 🌍 Multi-language support (English, French, Vietnamese)
+- 📊 Live audio waveform visualization with dynamic effects
 - 💫 Smooth animations and transitions
 - 🎯 Multiple Whisper model options (tiny, base, small, medium, large)
-- 📝 File transcription support (audio/video to text)
+- ⚡️ Optimized streaming for better real-time performance
+- 🎨 Enhanced visual feedback with glowing effects
 
 ## Components
 
 ### 1. Real-time Transcription (`whisper_gui.py`)
 - Modern GUI application for real-time speech recognition
-- Live audio visualization with beautiful animations
+- Dynamic waveform visualization with:
+  - Smooth wave transitions
+  - Responsive amplitude changes
+  - Glowing effects during recording
 - Support for multiple languages and models
 - GPU acceleration for better performance
+- Optimized audio streaming with 0.3s chunks
+- Automatic model initialization
 
 ### 2. File Transcription (`file-to-text.py`)
 - Convert audio/video files to text
@@ -76,52 +82,57 @@ python whisper_gui.py
 3. Select your preferred model and language from the dropdown menus
 4. Click "Start Recording" to begin transcription
 5. Speak into your microphone
-6. The transcription will appear in real-time with timestamps
-
-### File Transcription
-
-1. To transcribe audio/video files:
-```bash
-python file-to-text.py --input path/to/your/file.mp4 --output output.txt
-```
-
-Options:
-- `--input`: Input audio/video file path
-- `--output`: Output file path (supports .txt and .docx)
-- `--model`: Whisper model to use (default: small)
-- `--language`: Language code (default: auto)
-- `--timestamps`: Include timestamps in output (default: True)
-
-## Configuration
+6. Watch the beautiful waveform animation and real-time transcription
 
 ### Model Selection
 Choose from different Whisper models based on your needs:
-- `tiny`: Fastest, lowest accuracy
+- `tiny`: Fastest, lowest accuracy (good for testing)
 - `base`: Good balance of speed and accuracy
 - `small`: Better accuracy, still reasonable speed
-- `medium`: High accuracy, slower
-- `large`: Highest accuracy, slowest
+- `medium`: High accuracy, slower processing
+- `large`: Best accuracy, requires more resources
 
 ### Language Support
-- English (en)
-- French (fr)
-- Vietnamese (vi)
-- Auto-detect (auto)
+Currently supports:
+- English
+- Vietnamese
+- French
+
+The language can be changed in real-time during transcription.
 
 ## Performance Tips
 
-1. Use GPU acceleration when available:
-   - The app automatically detects and uses Apple Silicon GPU (MPS) or CUDA
-   - Falls back to CPU if GPU is not available
+1. **Model Selection**: 
+   - Start with `tiny` or `base` model for testing
+   - Use `small` for general use
+   - Use `medium` or `large` only if you need highest accuracy
 
-2. Choose the appropriate model:
-   - For real-time transcription, `tiny` or `base` models are recommended
-   - For file transcription, `small` or `medium` models provide better accuracy
-   - For batch processing, consider available system resources
+2. **GPU Acceleration**:
+   - The app automatically uses GPU if available
+   - Recommended for `medium` and `large` models
 
-3. Buffer size optimization:
-   - Real-time mode: 3-second buffer for optimal latency
-   - File mode: Automatically optimized based on file size
+3. **Audio Input**:
+   - Speak clearly and at a moderate pace
+   - Keep microphone at a consistent distance
+   - Avoid background noise for better accuracy
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. **Audio Not Detected**:
+   - Check your microphone permissions
+   - Verify input device in system settings
+
+2. **Slow Performance**:
+   - Try a smaller model
+   - Ensure GPU acceleration is working
+   - Check CPU/Memory usage
+
+3. **Transcription Issues**:
+   - Try changing the language setting
+   - Speak more clearly
+   - Adjust your microphone position
 
 ## Contributing
 
@@ -129,7 +140,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
