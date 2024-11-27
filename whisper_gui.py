@@ -8,7 +8,7 @@ import time
 import torch
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPointF, QRectF
-from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QRadialGradient, QPainterPath
+from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QRadialGradient, QPainterPath, QTextCharFormat, QFont
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QTextEdit, QPushButton, QComboBox, QLabel, QHBoxLayout, QFrame)
 
@@ -18,29 +18,58 @@ class WaveformWidget(QWidget):
         super().__init__()
         self.setMinimumHeight(100)
         self.waves = []
+        self.target_waves = []
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self.update_waves)
-        self.animation_timer.start(50)
+        self.animation_timer.start(30)  # Faster updates for smoother animation
         self.is_recording = False
+        self.transition_speed = 0.15  # Controls how fast waves transition
 
     def start_animation(self):
         self.is_recording = True
+        self.waves = [0.1] * 30  # Start with small waves
 
     def stop_animation(self):
         self.is_recording = False
+        self.target_waves = [0] * 30
 
     def update_audio_data(self, data):
         if len(data) > 0:
-            normalized = np.abs(data) / np.max(np.abs(data))
+            normalized = np.abs(data) / np.max(np.abs(data) + 1e-10)
             if self.is_recording:
-                self.waves = [normalized.mean() * 0.8 for _ in range(30)]  # 30 bars
+                # Create more varied wave heights with higher amplitude
+                chunk_size = len(normalized) // 30
+                self.target_waves = [
+                    # Increased amplitude
+                    normalized[i:i + chunk_size].mean() * 1.2
+                    for i in range(0, len(normalized), chunk_size)
+                ][:30]
+                # Add more randomness for dynamic look (±30% variation)
+                self.target_waves = [
+                    w * (1 + np.random.uniform(-0.3, 0.3)) for w in self.target_waves]
             else:
-                self.waves = [0] * 30
+                self.target_waves = [0] * 30
             self.update()
 
     def update_waves(self):
-        if self.is_recording and not self.waves:
-            self.waves = [np.random.normal(0.5, 0.2) for _ in range(30)]
+        if not self.waves:
+            self.waves = [0] * 30
+            self.target_waves = [0] * 30
+
+        # More responsive wave transitions
+        for i in range(len(self.waves)):
+            if self.is_recording:
+                # Enhanced dynamic variation
+                target = self.target_waves[i] * \
+                    (1 + np.sin(time.time() * 6 + i) * 0.15)
+                target *= 1 + np.cos(time.time() * 4) * \
+                    0.1  # Additional wave motion
+            else:
+                target = 0
+
+            # Faster transitions
+            self.waves[i] += (target - self.waves[i]) * 0.2
+
         self.update()
 
     def paintEvent(self, event):
@@ -54,33 +83,49 @@ class WaveformWidget(QWidget):
             width = self.width()
             height = self.height()
             center_y = height / 2
-            bar_width = width / (len(self.waves) * 2)  # Space between bars
-            max_height = height * 0.8  # Maximum bar height
+            bar_width = width / (len(self.waves) * 1.5)
+            max_height = height * 0.85  # Slightly higher bars
 
-            # Create gradient
+            # Green theme gradient
             gradient = QLinearGradient(0, 0, 0, height)
-            gradient.setColorAt(0, QColor(52, 199, 89))  # Apple green
-            gradient.setColorAt(1, QColor(48, 176, 199))  # Cyan blue
+            if self.is_recording:
+                # Vibrant green colors during recording
+                gradient.setColorAt(0, QColor(46, 204, 113))  # Bright green
+                gradient.setColorAt(0.5, QColor(39, 174, 96))  # Medium green
+                gradient.setColorAt(1, QColor(33, 150, 83))  # Dark green
+            else:
+                # Subtle green when not recording
+                gradient.setColorAt(0, QColor(46, 204, 113, 200))
+                gradient.setColorAt(1, QColor(33, 150, 83, 200))
 
             painter.setPen(Qt.NoPen)
             painter.setBrush(gradient)
 
             for i, amplitude in enumerate(self.waves):
-                # Calculate bar dimensions
                 x = width * i / len(self.waves)
-                bar_height = max_height * amplitude
-                
-                # Add subtle animation
-                if self.is_recording:
-                    bar_height *= (1 + np.sin(time.time() * 10 + i) * 0.1)
 
-                # Draw rounded rectangle
+                # Enhanced wave motion
+                wave_effect = np.sin(time.time() * 4 + i * 0.5) * 0.08
+                bar_height = max_height * (amplitude + wave_effect)
+
+                if self.is_recording:
+                    # Enhanced pulsing effect
+                    pulse = 1 + np.sin(time.time() * 5) * 0.08
+                    bar_height *= pulse
+
                 rect = QRectF(
-                    x + bar_width/2,  # Add spacing between bars
+                    x + bar_width/2,
                     center_y - bar_height/2,
                     bar_width,
                     bar_height
                 )
+
+                # Green glow effect when recording
+                if self.is_recording and amplitude > 0.1:
+                    glow = QPainterPath()
+                    glow.addRoundedRect(rect, bar_width/2, bar_width/2)
+                    painter.fillPath(glow, QColor(46, 204, 113, 40))
+
                 painter.drawRoundedRect(rect, bar_width/2, bar_width/2)
 
         finally:
@@ -355,33 +400,32 @@ class WhisperGUI(QMainWindow):
         cursor = self.text_display.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
 
+        # Add two newlines before new timestamp for better readability
+        if self.text_display.toPlainText():  # If there's existing text
+            cursor.insertText("\n\n")  # Add extra newlines between entries
+
         # Split timestamp and content
         timestamp, content = text.split("]", 1)
         timestamp += "]"
 
-        # Format text with modern chat bubble style
-        formatted_text = f'''
-            <div style="margin: 10px 0; animation: fadeIn 0.3s ease-in;">
-                <div style="margin-bottom: 5px;">
-                    <span style="color: #808080; font-size: 12px; font-family: -apple-system;">{timestamp}</span>
-                </div>
-                <div style="
-                    background: linear-gradient(135deg, #34c759 0%, #30b4c7 100%);
-                    padding: 12px 16px;
-                    border-radius: 15px;
-                    display: inline-block;
-                    max-width: 85%;
-                    font-family: -apple-system;
-                    font-size: 14px;
-                    line-height: 1.5;
-                    color: white;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    {content}
-                </div>
-            </div>
-        '''
+        # Set format for timestamp (gray color)
+        timestamp_format = QTextCharFormat()
+        timestamp_format.setForeground(
+            QColor(128, 128, 128))  # Gray color for timestamp
+        timestamp_format.setFontWeight(QFont.Bold)
 
-        cursor.insertHtml(formatted_text)
+        # Set format for content (white color)
+        content_format = QTextCharFormat()
+        content_format.setForeground(
+            QColor(255, 255, 255))  # White color for content
+
+        # Insert timestamp with gray format
+        cursor.insertText(timestamp, timestamp_format)
+
+        # Insert content with white format
+        cursor.insertText(content, content_format)
+
+        # Scroll to the new text
         self.text_display.setTextCursor(cursor)
         self.text_display.ensureCursorVisible()
 
