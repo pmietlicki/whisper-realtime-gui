@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve,
 from PySide6.QtGui import (QPainter, QColor, QPen, QLinearGradient, QRadialGradient,
                            QPainterPath, QTextCharFormat, QFont, QTextCursor)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                               QTextEdit, QPushButton, QComboBox, QLabel, QHBoxLayout, QFrame)
+                               QTextEdit, QPushButton, QComboBox, QLabel, QHBoxLayout, QFrame, QMessageBox)
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 
@@ -144,6 +144,10 @@ class WhisperGUI(QMainWindow):
         self.current_transcription = ""  # Current transcription text
         self.history_text = []  # Array to store history
         self.current_segment_start = None  # Track start time of current segment
+        
+        # Show startup message
+        self.statusBar().showMessage("Application is starting...")
+        
         self.init_ui()
         self.init_whisper()
         self.last_buffer_reset = time.time()
@@ -218,6 +222,7 @@ class WhisperGUI(QMainWindow):
 
     def load_model(self):
         model_name = self.model_combo.currentText()
+        self.statusBar().showMessage(f"Loading model {model_name}...")
         print(f"Loading model {model_name}...")
         try:
             # Đổi tên model để phù hợp với transformers
@@ -315,7 +320,7 @@ class WhisperGUI(QMainWindow):
                         return_timestamps=False,
                         max_new_tokens=128,
                         num_beams=1,  # Giảm số beam để tăng tốc độ
-                        forced_decoder_ids=None  # Disable forced decoder ids
+                        do_sample=False  # Tắt sampling để ổn định hơn
                     )
 
                     # Decode token ids to text
@@ -443,6 +448,17 @@ class WhisperGUI(QMainWindow):
         cursor = self.text_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.text_display.setTextCursor(cursor)
+
+    def closeEvent(self, event):
+        # Stop any background processes or threads
+        if self.recording:
+            self.stop_recording()
+        
+        # Perform any additional cleanup here
+        print("Application is closing...")
+        
+        # Accept the event to close the application
+        event.accept()
 
 
 def main():
