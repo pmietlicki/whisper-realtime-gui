@@ -6,7 +6,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -80,7 +79,6 @@ cover/
 env/
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -93,6 +91,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Allow only .dmg in dist folder
+dist/*
+!dist/*.dmg
 
 .venv
 venv

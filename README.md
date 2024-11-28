@@ -48,6 +48,13 @@ A modern, real-time speech recognition application built with OpenAI's Whisper a
 
 ## Installation
 
+### For macOS Users
+1. Download the latest `.dmg` file from the [Releases](https://github.com/phongthanhbuiit/whisper-realtime-gui/releases) page
+2. Open the downloaded `.dmg` file
+3. Drag the application to your Applications folder
+4. Double click to run the application
+
+### For Developers
 1. Clone the repository:
 ```bash
 git clone https://github.com/phongthanhbuiit/whisper-realtime-gui.git
@@ -64,6 +71,13 @@ source venv/bin/activate  # On macOS/Linux
 ```bash
 pip install -r requirements.txt
 ```
+
+## Release Information
+
+- Version: 1.0.0
+- Release Date: 2023-02-20
+- Changes:
+  - Initial release with real-time transcription and file transcription features
 
 ## Usage
 
