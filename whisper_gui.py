@@ -6,6 +6,7 @@ import queue
 import threading
 import time
 import torch
+import traceback
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPointF, QRectF
 from PySide6.QtGui import (QPainter, QColor, QPen, QLinearGradient, QRadialGradient, 
@@ -136,15 +137,17 @@ class WaveformWidget(QWidget):
 
 class WhisperGUI(QMainWindow):
     update_text = Signal(str)
-    add_newline = Signal()  # New signal for adding newline
+    add_newline = Signal()
 
     def __init__(self):
         super().__init__()
+        self.current_transcription = ""  # Current transcription text
+        self.history_text = []  # Array to store history
         self.init_ui()
         self.init_whisper()
         self.last_buffer_reset = time.time()
         self.update_text.connect(self.update_display)
-        self.add_newline.connect(self._add_newline)  # Connect new signal
+        self.add_newline.connect(self._add_newline)
 
     def on_language_change(self, language):
         print(f"Changing language to: {language}")
@@ -227,6 +230,7 @@ class WhisperGUI(QMainWindow):
         self.stable_tokens = None
         self.unstable_tokens = None
         self.eos_token = None
+        self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
         # Load model ngay khi khởi tạo
         self.load_model()
 
@@ -246,12 +250,16 @@ class WhisperGUI(QMainWindow):
             elif model_name == "large":
                 model_name = "openai/whisper-large"
 
+            # Load processor and model with specific configuration
             self.processor = WhisperProcessor.from_pretrained(model_name)
             self.model = WhisperForConditionalGeneration.from_pretrained(
-                model_name)
-
-            if torch.cuda.is_available():
-                self.model = self.model.to("cuda")
+                model_name,
+                torch_dtype=torch.float32,
+            ).to(self.device)
+            
+            # Set initial language
+            current_lang = self.lang_combo.currentText().lower()
+            print(f"Setting initial language to: {current_lang}")
 
             # Reset các biến streaming
             self.stable_tokens = None
@@ -285,9 +293,13 @@ class WhisperGUI(QMainWindow):
                 # Giới hạn độ dài buffer để tránh quá tải
                 max_buffer_size = self.sample_rate * 15  # 15 giây
                 current_time = time.time()
-                
+                buffer_reset_time = 15
                 # Reset buffer sau mỗi 15 giây
-                if current_time - self.last_buffer_reset >= 15:
+                if current_time - self.last_buffer_reset > buffer_reset_time:
+                    # Save current transcription to history before reset
+                    if self.current_transcription.strip():
+                        self.history_text.append(self.current_transcription.strip())
+                    self.current_transcription = ""
                     self.last_buffer_reset = current_time
                     self.add_newline.emit()  # Emit signal instead of direct modification
                     audio_buffer = audio_data  # Reset buffer
@@ -301,15 +313,11 @@ class WhisperGUI(QMainWindow):
                         sampling_rate=self.sample_rate,
                         return_tensors="pt"
                     )
-                    input_features = inputs.input_features
+                    input_features = inputs.input_features.to(self.device)
 
                     # Tạo attention mask
                     attention_mask = torch.ones_like(
-                        input_features, dtype=torch.long)
-
-                    if torch.cuda.is_available():
-                        input_features = input_features.to("cuda")
-                        attention_mask = attention_mask.to("cuda")
+                        input_features, dtype=torch.long, device=self.device)
 
                     # Generate token ids
                     predicted_ids = self.model.generate(
@@ -320,7 +328,7 @@ class WhisperGUI(QMainWindow):
                         return_timestamps=False,
                         max_new_tokens=128,
                         num_beams=1,  # Giảm số beam để tăng tốc độ
-                        do_sample=False  # Tắt sampling để ổn định hơn
+                        forced_decoder_ids=None  # Disable forced decoder ids
                     )
 
                     # Decode token ids to text
@@ -330,6 +338,7 @@ class WhisperGUI(QMainWindow):
                     )[0]
 
                     # Update the display with new text
+                    self.current_transcription = transcription
                     self.update_text.emit(transcription)
 
                 except Exception as e:
@@ -428,19 +437,12 @@ class WhisperGUI(QMainWindow):
             self.text_display.append("")
 
     def update_display(self, text):
-        current_text = self.text_display.toPlainText()
-        
-        # Nếu text hiện tại không trống, thêm vào cuối
-        if current_text:
-            # Lấy đoạn text cuối cùng (sau dòng mới cuối cùng)
-            lines = current_text.split('\n')
-            if len(lines) > 0:
-                lines[-1] = text  # Cập nhật dòng cuối cùng
-            new_text = '\n'.join(lines)
-        else:
-            new_text = text
-            
-        self.text_display.setPlainText(new_text)
+        # Create display text with history above and current transcription below
+        display_text = ""
+        if self.history_text:
+            display_text = "\n".join(self.history_text) + "\n\n"
+        display_text += "Current: " + text
+        self.text_display.setPlainText(display_text)
         cursor = self.text_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.text_display.setTextCursor(cursor)
