@@ -8,7 +8,8 @@ import time
 import torch
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPointF, QRectF
-from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QRadialGradient, QPainterPath, QTextCharFormat, QFont
+from PySide6.QtGui import (QPainter, QColor, QPen, QLinearGradient, QRadialGradient, 
+                          QPainterPath, QTextCharFormat, QFont, QTextCursor)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QTextEdit, QPushButton, QComboBox, QLabel, QHBoxLayout, QFrame)
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
@@ -135,11 +136,27 @@ class WaveformWidget(QWidget):
 
 class WhisperGUI(QMainWindow):
     update_text = Signal(str)
+    add_newline = Signal()  # New signal for adding newline
 
     def __init__(self):
         super().__init__()
         self.init_ui()
         self.init_whisper()
+        self.last_buffer_reset = time.time()
+        self.update_text.connect(self.update_display)
+        self.add_newline.connect(self._add_newline)  # Connect new signal
+
+    def on_language_change(self, language):
+        print(f"Changing language to: {language}")
+        if self.model is not None and self.processor is not None:
+            # Reset các biến streaming
+            self.stable_tokens = None
+            self.unstable_tokens = None
+            self.eos_token = None
+
+            # Xóa text hiện tại
+            self.text_display.clear()
+            print(f"Language updated to {language}")
 
     def init_ui(self):
         # Layout chính
@@ -197,21 +214,6 @@ class WhisperGUI(QMainWindow):
         # Window properties
         self.setWindowTitle("Whisper GUI")
         self.setGeometry(100, 100, 800, 600)
-
-        # Connect signal
-        self.update_text.connect(self.update_display)
-
-    def on_language_change(self, language):
-        print(f"Changing language to: {language}")
-        if self.model is not None and self.processor is not None:
-            # Reset các biến streaming
-            self.stable_tokens = None
-            self.unstable_tokens = None
-            self.eos_token = None
-
-            # Xóa text hiện tại
-            self.text_display.clear()
-            print(f"Language updated to {language}")
 
     def init_whisper(self):
         self.recording = False
@@ -281,8 +283,15 @@ class WhisperGUI(QMainWindow):
                 audio_buffer = np.concatenate([audio_buffer, audio_data])
 
                 # Giới hạn độ dài buffer để tránh quá tải
-                max_buffer_size = self.sample_rate * 30  # 30 giây
-                if len(audio_buffer) > max_buffer_size:
+                max_buffer_size = self.sample_rate * 15  # 15 giây
+                current_time = time.time()
+                
+                # Reset buffer sau mỗi 15 giây
+                if current_time - self.last_buffer_reset >= 15:
+                    self.last_buffer_reset = current_time
+                    self.add_newline.emit()  # Emit signal instead of direct modification
+                    audio_buffer = audio_data  # Reset buffer
+                elif len(audio_buffer) > max_buffer_size:
                     audio_buffer = audio_buffer[-max_buffer_size:]
 
                 try:
@@ -414,23 +423,27 @@ class WhisperGUI(QMainWindow):
 
         return result
 
+    def _add_newline(self):
+        if len(self.text_display.toPlainText().strip()) > 0:
+            self.text_display.append("")
+
     def update_display(self, text):
+        current_text = self.text_display.toPlainText()
+        
+        # Nếu text hiện tại không trống, thêm vào cuối
+        if current_text:
+            # Lấy đoạn text cuối cùng (sau dòng mới cuối cùng)
+            lines = current_text.split('\n')
+            if len(lines) > 0:
+                lines[-1] = text  # Cập nhật dòng cuối cùng
+            new_text = '\n'.join(lines)
+        else:
+            new_text = text
+            
+        self.text_display.setPlainText(new_text)
         cursor = self.text_display.textCursor()
-
-        # Xóa text cũ
-        self.text_display.clear()
-
-        # Set format cho text (màu trắng)
-        text_format = QTextCharFormat()
-        text_format.setForeground(QColor("white"))
-
-        # Chèn text mới
-        cursor.insertText(text, text_format)
-
-        # Đặt con trỏ về cuối và scroll
-        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.movePosition(QTextCursor.MoveOperation.End)
         self.text_display.setTextCursor(cursor)
-        self.text_display.ensureCursorVisible()
 
 
 def main():
