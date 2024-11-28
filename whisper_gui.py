@@ -379,6 +379,41 @@ class WhisperGUI(QMainWindow):
         self.audio_queue.put(indata.copy())
         self.waveform.update_audio_data(indata.copy())
 
+    def merge_text(self, text1, text2):
+        """
+        Merge two texts intelligently, keeping the context and avoiding duplicates
+        """
+        if not text1:
+            return text2
+
+        # Tìm phần chung dài nhất giữa cuối text1 và đầu text2
+        words1 = text1.lower().split()
+        words2 = text2.lower().split()
+
+        max_overlap = 0
+        overlap_pos = 0
+
+        # Tìm vị trí overlap tốt nhất
+        for i in range(len(words1)):
+            for j in range(len(words2)):
+                k = 0
+                while (i + k < len(words1) and
+                       k < len(words2) and
+                       words1[i + k] == words2[k]):
+                    k += 1
+                if k > max_overlap:
+                    max_overlap = k
+                    overlap_pos = i
+
+        if max_overlap > 0:
+            # Kết hợp text với phần overlap
+            result = " ".join(words1[:overlap_pos] + words2)
+        else:
+            # Nếu không có overlap, nối trực tiếp
+            result = text1 + " " + text2
+
+        return result
+
     def update_display(self, text):
         cursor = self.text_display.textCursor()
 
