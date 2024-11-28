@@ -9,8 +9,8 @@ import torch
 import traceback
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPointF, QRectF
-from PySide6.QtGui import (QPainter, QColor, QPen, QLinearGradient, QRadialGradient, 
-                          QPainterPath, QTextCharFormat, QFont, QTextCursor)
+from PySide6.QtGui import (QPainter, QColor, QPen, QLinearGradient, QRadialGradient,
+                           QPainterPath, QTextCharFormat, QFont, QTextCursor)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QTextEdit, QPushButton, QComboBox, QLabel, QHBoxLayout, QFrame)
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
@@ -150,18 +150,6 @@ class WhisperGUI(QMainWindow):
         self.update_text.connect(self.update_display)
         self.add_newline.connect(self._add_newline)
 
-    def on_language_change(self, language):
-        print(f"Changing language to: {language}")
-        if self.model is not None and self.processor is not None:
-            # Reset các biến streaming
-            self.stable_tokens = None
-            self.unstable_tokens = None
-            self.eos_token = None
-
-            # Xóa text hiện tại
-            self.text_display.clear()
-            print(f"Language updated to {language}")
-
     def init_ui(self):
         # Layout chính
         main_layout = QVBoxLayout()
@@ -177,12 +165,6 @@ class WhisperGUI(QMainWindow):
         self.model_combo.addItems(["tiny", "base", "small", "medium", "large"])
         self.model_combo.currentTextChanged.connect(self.load_model)
 
-        # Language selection
-        lang_label = QLabel("Language:")
-        self.lang_combo = QComboBox()
-        self.lang_combo.addItems(["english", "vietnamese", "french"])
-        self.lang_combo.currentTextChanged.connect(self.on_language_change)
-
         # Record button
         self.record_button = QPushButton("Start Recording")
         self.record_button.clicked.connect(self.toggle_recording)
@@ -190,8 +172,6 @@ class WhisperGUI(QMainWindow):
         # Add controls to layout
         controls_layout.addWidget(model_label)
         controls_layout.addWidget(self.model_combo)
-        controls_layout.addWidget(lang_label)
-        controls_layout.addWidget(self.lang_combo)
         controls_layout.addWidget(self.record_button)
         controls_frame.setLayout(controls_layout)
 
@@ -231,7 +211,8 @@ class WhisperGUI(QMainWindow):
         self.stable_tokens = None
         self.unstable_tokens = None
         self.eos_token = None
-        self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+        self.device = torch.device(
+            'mps' if torch.backends.mps.is_available() else 'cpu')
         # Load model ngay khi khởi tạo
         self.load_model()
 
@@ -257,10 +238,6 @@ class WhisperGUI(QMainWindow):
                 model_name,
                 torch_dtype=torch.float32,
             ).to(self.device)
-            
-            # Set initial language
-            current_lang = self.lang_combo.currentText().lower()
-            print(f"Setting initial language to: {current_lang}")
 
             # Reset các biến streaming
             self.stable_tokens = None
@@ -301,12 +278,14 @@ class WhisperGUI(QMainWindow):
                     if self.current_transcription.strip():
                         # Format timestamps
                         end_time = datetime.fromtimestamp(current_time)
-                        start_time = datetime.fromtimestamp(self.current_segment_start or (current_time - buffer_reset_time))
+                        start_time = datetime.fromtimestamp(
+                            self.current_segment_start or (current_time - buffer_reset_time))
                         timestamp = f"[{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}]"
-                        
+
                         # Add to history with timestamp
-                        self.history_text.append(f"{timestamp} {self.current_transcription.strip()}")
-                    
+                        self.history_text.append(
+                            f"{timestamp} {self.current_transcription.strip()}")
+
                     self.current_transcription = ""
                     self.current_segment_start = current_time  # Set start time for new segment
                     self.last_buffer_reset = current_time
@@ -333,7 +312,6 @@ class WhisperGUI(QMainWindow):
                         input_features,
                         attention_mask=attention_mask,
                         task="transcribe",
-                        language=self.lang_combo.currentText().lower(),
                         return_timestamps=False,
                         max_new_tokens=128,
                         num_beams=1,  # Giảm số beam để tăng tốc độ
@@ -450,7 +428,7 @@ class WhisperGUI(QMainWindow):
         display_text = ""
         if self.history_text:
             display_text = "\n".join(self.history_text) + "\n\n"
-        
+
         # Add current transcription with timestamp if available
         if self.current_segment_start and text.strip():
             current_time = time.time()
@@ -460,7 +438,7 @@ class WhisperGUI(QMainWindow):
             display_text += f"Current: {timestamp} {text}"
         else:
             display_text += f"Current: {text}"
-            
+
         self.text_display.setPlainText(display_text)
         cursor = self.text_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
