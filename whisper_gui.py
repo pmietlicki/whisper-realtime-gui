@@ -143,6 +143,7 @@ class WhisperGUI(QMainWindow):
         super().__init__()
         self.current_transcription = ""  # Current transcription text
         self.history_text = []  # Array to store history
+        self.current_segment_start = None  # Track start time of current segment
         self.init_ui()
         self.init_whisper()
         self.last_buffer_reset = time.time()
@@ -298,8 +299,16 @@ class WhisperGUI(QMainWindow):
                 if current_time - self.last_buffer_reset > buffer_reset_time:
                     # Save current transcription to history before reset
                     if self.current_transcription.strip():
-                        self.history_text.append(self.current_transcription.strip())
+                        # Format timestamps
+                        end_time = datetime.fromtimestamp(current_time)
+                        start_time = datetime.fromtimestamp(self.current_segment_start or (current_time - buffer_reset_time))
+                        timestamp = f"[{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}]"
+                        
+                        # Add to history with timestamp
+                        self.history_text.append(f"{timestamp} {self.current_transcription.strip()}")
+                    
                     self.current_transcription = ""
+                    self.current_segment_start = current_time  # Set start time for new segment
                     self.last_buffer_reset = current_time
                     self.add_newline.emit()  # Emit signal instead of direct modification
                     audio_buffer = audio_data  # Reset buffer
@@ -441,7 +450,17 @@ class WhisperGUI(QMainWindow):
         display_text = ""
         if self.history_text:
             display_text = "\n".join(self.history_text) + "\n\n"
-        display_text += "Current: " + text
+        
+        # Add current transcription with timestamp if available
+        if self.current_segment_start and text.strip():
+            current_time = time.time()
+            start_time = datetime.fromtimestamp(self.current_segment_start)
+            end_time = datetime.fromtimestamp(current_time)
+            timestamp = f"[{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}]"
+            display_text += f"Current: {timestamp} {text}"
+        else:
+            display_text += f"Current: {text}"
+            
         self.text_display.setPlainText(display_text)
         cursor = self.text_display.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
