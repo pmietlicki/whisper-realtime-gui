@@ -105,3 +105,5 @@ download_models.py
 post_build.py 
 Speech-to-Text.spec
 build/*
+whisper_gui-windows.spec
+whisper_gui.spec
