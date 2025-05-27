@@ -74,14 +74,39 @@ class FileTranscribeThread(QThread):
                 chunk_data = audio[start:end]
                 self.audio_chunk.emit(chunk_data)
 
-                # Transcription par chunk avec beam search
-                res = self.model.transcribe(
-                    chunk_data,
-                    language=self.lang,
-                    beam_size=self.beam_size,
-                    best_of=self.best_of,
-                    fp16=False
-                )
+                # Transcription par chunk, avec fallback GPU→CPU et réduction de beam
+                try:
+                    res = self.model.transcribe(
+                        chunk_data,
+                        language=self.lang,
+                        beam_size=self.beam_size,
+                        best_of=self.best_of,
+                        fp16=False
+                    )
+                except RuntimeError as e:
+                    if "illegal memory access" in str(e):
+                        torch.cuda.empty_cache()
+                        # Essai en mode mémoire réduite
+                        try:
+                            res = self.model.transcribe(
+                                chunk_data,
+                                language=self.lang,
+                                beam_size=1,
+                                best_of=1,
+                                fp16=False
+                            )
+                        except RuntimeError:
+                            # Fallback ultime : CPU
+                            cpu_model = whisper.load_model(self.model.name, device="cpu")
+                            res = cpu_model.transcribe(
+                                chunk_data,
+                                language=self.lang,
+                                beam_size=1,
+                                best_of=1,
+                                fp16=False
+                            )
+                    else:
+                        raise
 
                 # Bufferisation en paragraphes de spp phrases
                 for seg in res["segments"]:
