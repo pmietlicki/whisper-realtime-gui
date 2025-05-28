@@ -19,6 +19,8 @@ wheels/
 .installed.cfg
 *.egg
 *.dmg
+*.mp3
+transcript*.txt
 
 # Virtual Environment
 venv/

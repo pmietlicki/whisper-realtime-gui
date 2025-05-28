@@ -11,7 +11,7 @@ import math
 import re
 import os
 from datetime import datetime
-from PySide6.QtCore import Qt, QTimer, Signal, QThread, Slot, QRectF
+from PySide6.QtCore import Qt, QTimer, Signal, QThread, Slot, QRectF, Signal
 from PySide6.QtGui import (QPainter, QColor, QLinearGradient,
                            QPainterPath, QTextCursor)
 from PySide6.QtWidgets import (
@@ -21,11 +21,18 @@ from PySide6.QtWidgets import (
 )
 from docx import Document
 
-import math
-import re
-import whisper
-import traceback
-from PySide6.QtCore import QThread, Signal
+def format_transcription_text(raw_text: str) -> str:
+    # 1. Fusionner les lignes
+    text = raw_text.replace("\n", " ")
+    # 2. Nettoyer ponctuation
+    text = re.sub(r'\s*,\s*', ', ', text)
+    text = re.sub(r'\s*\.\s*', '. ', text)
+    text = re.sub(r'\s*\?\s*', '? ', text)
+    text = re.sub(r'\s*!\s*', '! ', text)
+    # 3. Découper en phrases
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    # 4. Reconstruction
+    return "\n".join(s.strip() for s in sentences if s.strip())
 
 class FileTranscribeThread(QThread):
     """Transcription d'un fichier en chunks, avec buffering de N phrases."""
@@ -38,6 +45,7 @@ class FileTranscribeThread(QThread):
         self,
         infile: str,
         model,
+        model_name: str,
         lang: str,
         chunk_s: int = 30,
         spp: int = 3,
@@ -47,6 +55,7 @@ class FileTranscribeThread(QThread):
         super().__init__()
         self.infile    = infile
         self.model     = model
+        self.model_name= model_name
         self.lang      = lang
         self.chunk_s   = chunk_s
         self.spp       = spp
@@ -58,13 +67,17 @@ class FileTranscribeThread(QThread):
         self.buffer    = []
 
     def run(self):
+        # 1) Pré‐charger un modèle CPU de secours
+        cpu_model = whisper.load_model(self.model_name, device="cpu")
+
         try:
-            # Charge l'audio et calcule le nombre de chunks
             audio = whisper.load_audio(self.infile)
             sr, total = whisper.audio.SAMPLE_RATE, audio.shape[0]
             sz = self.chunk_s * sr
             chunks = math.ceil(total / sz)
             self.progress.emit(0, chunks)
+
+            use_cpu = False  # flag pour basculer définitivement
 
             for i in range(chunks):
                 if self._abort:
@@ -74,9 +87,11 @@ class FileTranscribeThread(QThread):
                 chunk_data = audio[start:end]
                 self.audio_chunk.emit(chunk_data)
 
-                # Transcription par chunk, avec fallback GPU→CPU et réduction de beam
+                # 2) Choisir le modèle actif
+                model = cpu_model if use_cpu else self.model
+
                 try:
-                    res = self.model.transcribe(
+                    res = model.transcribe(
                         chunk_data,
                         language=self.lang,
                         beam_size=self.beam_size,
@@ -84,36 +99,36 @@ class FileTranscribeThread(QThread):
                         fp16=False
                     )
                 except RuntimeError as e:
-                    if "illegal memory access" in str(e):
-                        torch.cuda.empty_cache()
-                        # Essai en mode mémoire réduite
+                    msg = str(e).lower()
+                    if "illegal memory access" in msg or "cuda" in msg:
+                        # on passe en CPU pour la suite
+                        use_cpu = True
+                        # vider le cache sans risque de crash
                         try:
-                            res = self.model.transcribe(
-                                chunk_data,
-                                language=self.lang,
-                                beam_size=1,
-                                best_of=1,
-                                fp16=False
-                            )
-                        except RuntimeError:
-                            # Fallback ultime : CPU
-                            cpu_model = whisper.load_model(self.model.name, device="cpu")
-                            res = cpu_model.transcribe(
-                                chunk_data,
-                                language=self.lang,
-                                beam_size=1,
-                                best_of=1,
-                                fp16=False
-                            )
+                            torch.cuda.empty_cache()
+                        except Exception:
+                            pass
+                        # et relancer immédiatement en CPU
+                        res = cpu_model.transcribe(
+                            chunk_data,
+                            language=self.lang,
+                            beam_size=1,
+                            best_of=1,
+                            fp16=False
+                        )
                     else:
+                        # autre erreur -> on remonte
                         raise
 
-                # Bufferisation en paragraphes de spp phrases
+                # 3) Bufferisation comme avant
                 for seg in res["segments"]:
                     for ph in self.splitter.split(seg["text"].strip()):
                         if not ph:
                             continue
-                        self.buffer.append(ph.capitalize())
+                        if len(self.buffer) == 0:
+                            self.buffer.append(ph.capitalize())
+                        else:
+                            self.buffer.append(ph)
                         if len(self.buffer) >= self.spp:
                             para = " ".join(self.buffer)
                             self.segment.emit(para)
@@ -121,10 +136,9 @@ class FileTranscribeThread(QThread):
 
                 self.progress.emit(i + 1, chunks)
 
-            # Flush : émettre le reste du buffer
+            # flush final
             if self.buffer:
-                para = " ".join(self.buffer)
-                self.segment.emit(para)
+                self.segment.emit(" ".join(self.buffer))
                 self.buffer.clear()
 
         except Exception:
@@ -323,6 +337,9 @@ class WhisperGUI(QMainWindow):
         # si CUDA dispo, propose GPU, sinon juste CPU
         devices = (["GPU"] if torch.cuda.is_available() else []) + ["CPU"]
         self.device_combo.addItems(devices)
+        if torch.cuda.is_available():
+            # force la sélection de GPU par défaut
+            self.device_combo.setCurrentText("GPU")
         controls_layout.addWidget(device_label)
         controls_layout.addWidget(self.device_combo)
 
@@ -612,6 +629,7 @@ class WhisperGUI(QMainWindow):
     @Slot(object)
     def on_model_loaded(self, model):
         self.model = model
+        self.current_model_name = self.model_combo.currentText()
         self.statusBar().showMessage("Modèle chargé !", 3000)
         self.progress_bar.setVisible(False)
         self.model_combo.setEnabled(True)
@@ -799,6 +817,7 @@ class WhisperGUI(QMainWindow):
         self.trans_file_thread = FileTranscribeThread(
             infile    = self.loaded_file_path,
             model     = self.model,
+            model_name= self.current_model_name,
             lang      = "fr",
             chunk_s   = chunk_duration,
             spp       = self.spn_spp.value(),
@@ -932,22 +951,23 @@ class WhisperGUI(QMainWindow):
             self.text_display.append("")
 
     def update_display(self, text):
-        # Create display text with history above and current transcription below
-        display_text = ""
+        """
+        Récupère l'historique + le segment courant, formate l'ensemble
+        et met à jour le QTextEdit en temps réel.
+        """
+        # 1) Concatène l’historique et le nouveau segment
+        full = ""
         if self.history_text:
-            display_text = "\n".join(self.history_text) + "\n\n"
+            full = "\n".join(self.history_text) + "\n\n"
+        full += text
 
-        # Add current transcription with timestamp if available
-        if self.current_segment_start and text.strip():
-            current_time = time.time()
-            start_time = datetime.fromtimestamp(self.current_segment_start)
-            end_time = datetime.fromtimestamp(current_time)
-            timestamp = f"[{start_time.strftime('%H:%M:%S')}-{end_time.strftime('%H:%M:%S')}]"
-            display_text += f"Current: {timestamp} {text}"
-        else:
-            display_text += text
+        # 2) Formate tout de suite
+        formatted = format_transcription_text(full)
 
-        self.text_display.setPlainText(display_text)
+        # 3) Affiche
+        self.text_display.setPlainText(formatted)
+
+        # 4) Replace le curseur à la fin
         cursor = self.text_display.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.text_display.setTextCursor(cursor)
