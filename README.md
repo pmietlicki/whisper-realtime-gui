@@ -40,7 +40,7 @@ Une application de reconnaissance vocale en temps réel basée sur Whisper d'Ope
 #### Pour les développeurs
 1. Clonez le dépôt :
 ```bash
-git clone https://github.com/phongthanhbuiit/whisper-realtime-gui.git
+git clone https://github.com/pmietlicki/whisper-realtime-gui.git
 cd whisper-realtime-gui
 ```
 
@@ -103,7 +103,7 @@ A modern, real-time speech recognition application built with OpenAI's Whisper a
 #### For Developers
 1. Clone the repository:
 ```bash
-git clone https://github.com/phongthanhbuiit/whisper-realtime-gui.git
+git clone https://github.com/pmietlicki/whisper-realtime-gui.git
 cd whisper-realtime-gui
 ```
 
@@ -198,6 +198,10 @@ If you encounter issues:
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 Les contributions sont les bienvenues ! N'hésitez pas à soumettre une Pull Request.
+
+## 🙏 Credits
+
+This project is a fork of [whisper-realtime-gui](https://github.com/phongthanhbuiit/whisper-realtime-gui) by [Phong Thanh Bui](https://github.com/phongthanhbuiit).
 
 ## 📜 License / Licence
 
