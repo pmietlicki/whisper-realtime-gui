@@ -3,8 +3,6 @@
   <p>Application de reconnaissance vocale en temps réel avec une interface utilisateur moderne</p>
   <p>Real-time speech recognition application with a modern user interface</p>
   
-  ![Demo Screenshot](demo.png)
-  
   <div>
     <a href="#français">Français</a> | 
     <a href="#english">English</a>
@@ -150,7 +148,6 @@ Choose from different Whisper models based on your needs:
 ### 🌍 Language Support
 - English
 - French
-- Vietnamese
 
 The language can be changed in real-time during transcription.
 
