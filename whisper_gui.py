@@ -11,7 +11,7 @@ import math
 import re
 import os
 from datetime import datetime
-from PySide6.QtCore import Qt, QTimer, Signal, QThread, Slot, QRectF, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QThread, Slot, QRectF, QLocale, QTranslator
 from PySide6.QtGui import (QPainter, QColor, QLinearGradient,
                            QPainterPath, QTextCursor)
 from PySide6.QtWidgets import (
@@ -46,7 +46,6 @@ class FileTranscribeThread(QThread):
         infile: str,
         model,
         model_name: str,
-        lang: str,
         chunk_s: int = 30,
         spp: int = 3,
         beam_size: int = 5,
@@ -56,7 +55,6 @@ class FileTranscribeThread(QThread):
         self.infile    = infile
         self.model     = model
         self.model_name= model_name
-        self.lang      = lang
         self.chunk_s   = chunk_s
         self.spp       = spp
         self.beam_size = beam_size
@@ -93,7 +91,6 @@ class FileTranscribeThread(QThread):
                 try:
                     res = model.transcribe(
                         chunk_data,
-                        language=self.lang,
                         beam_size=self.beam_size,
                         best_of=self.best_of,
                         fp16=False
@@ -111,7 +108,6 @@ class FileTranscribeThread(QThread):
                         # et relancer immédiatement en CPU
                         res = cpu_model.transcribe(
                             chunk_data,
-                            language=self.lang,
                             beam_size=1,
                             best_of=1,
                             fp16=False
@@ -327,12 +323,12 @@ class WhisperGUI(QMainWindow):
         controls_layout = QHBoxLayout()
 
         # Model selection
-        model_label = QLabel("Model:")
+        model_label = QLabel(self.tr("Model:"))
         self.model_combo = QComboBox()
         self.model_combo.addItems(["tiny", "base", "small", "medium", "large"])
         self.model_combo.currentTextChanged.connect(self.load_model)
 
-        device_label = QLabel("Device:")
+        device_label = QLabel(self.tr("Device:"))
         self.device_combo = QComboBox()
         # si CUDA dispo, propose GPU, sinon juste CPU
         devices = (["GPU"] if torch.cuda.is_available() else []) + ["CPU"]
@@ -344,10 +340,10 @@ class WhisperGUI(QMainWindow):
         controls_layout.addWidget(self.device_combo)
 
         # Buttons
-        self.record_button = QPushButton("Démarrer l'enregistrement")
+        self.record_button = QPushButton(self.tr("Start recording"))
         self.record_button.clicked.connect(self.toggle_recording)
         
-        self.open_file_button = QPushButton("Ouvrir un fichier audio")
+        self.open_file_button = QPushButton(self.tr("Open audio file"))
         self.open_file_button.clicked.connect(self.open_audio_file)
 
         # Add controls to layout
@@ -374,17 +370,17 @@ class WhisperGUI(QMainWindow):
         main_layout.addWidget(self.text_display)
 
         # — NOUVEAU : zone "Enregistrement" —
-        grp_export = QGroupBox("Options d'export en temps réel")
+        grp_export = QGroupBox(self.tr("Real-time export options"))
         form_export = QFormLayout()
 
         # — Mode expert et paramètres avancés —
         # Checkbox pour activer le groupe Expert
-        self.chk_expert = QCheckBox("Mode expert")
+        self.chk_expert = QCheckBox(self.tr("Expert mode"))
         self.chk_expert.toggled.connect(self._on_expert_toggled)
         main_layout.addWidget(self.chk_expert)
 
         # Groupe Expert (caché par défaut)
-        self.grp_exp = QGroupBox("Paramètres avancés")
+        self.grp_exp = QGroupBox(self.tr("Advanced parameters"))
         self.grp_exp.setVisible(False)
         form_exp = QFormLayout()
 
@@ -392,28 +388,28 @@ class WhisperGUI(QMainWindow):
         self.spn_chunk = QSpinBox()
         self.spn_chunk.setRange(5, 300)
         self.spn_chunk.setValue(30)
-        form_exp.addRow("Chunk (s) :", self.spn_chunk)
+        form_exp.addRow(self.tr("Chunk (s)"), self.spn_chunk)
 
         self.spn_spp = QSpinBox()
         self.spn_spp.setRange(1, 10)
         self.spn_spp.setValue(3)
-        form_exp.addRow("Phrases/para :", self.spn_spp)
+        form_exp.addRow(self.tr("Sentences/para"), self.spn_spp)
 
         self.spn_beam = QSpinBox()
         self.spn_beam.setRange(1, 10)
         self.spn_beam.setValue(5)
-        form_exp.addRow("Beam size :", self.spn_beam)
+        form_exp.addRow(self.tr("Beam size"), self.spn_beam)
 
         self.spn_best = QSpinBox()
         self.spn_best.setRange(1, 10)
         self.spn_best.setValue(5)
-        form_exp.addRow("Best of :", self.spn_best)
+        form_exp.addRow(self.tr("Best of"), self.spn_best)
 
         self.grp_exp.setLayout(form_exp)
         main_layout.addWidget(self.grp_exp)
 
         # TXT
-        self.chk_save_txt  = QCheckBox("Enregistrer en TXT (temps réel)")
+        self.chk_save_txt  = QCheckBox(self.tr("Save as TXT (real-time)"))
         self.chk_save_txt.setChecked(False)
         self.chk_save_txt.toggled.connect(self.toggle_txt_realtime)
         self.le_txt_path   = QLineEdit("transcription.txt")
@@ -426,7 +422,7 @@ class WhisperGUI(QMainWindow):
                            self._hbox(self.le_txt_path, self.btn_txt_browse))
 
         # DOCX
-        self.chk_save_docx = QCheckBox("Enregistrer en DOCX (temps réel)")
+        self.chk_save_docx = QCheckBox(self.tr("Save as DOCX (real-time)"))
         self.chk_save_docx.setChecked(False)
         self.chk_save_docx.toggled.connect(self.toggle_docx_realtime)
         self.le_docx_path  = QLineEdit("transcription.docx")
@@ -442,7 +438,7 @@ class WhisperGUI(QMainWindow):
         main_layout.addWidget(grp_export)
 
         # Bouton d'enregistrement manuel (optionnel)
-        self.btn_save = QPushButton("Enregistrer transcription manuellement")
+        self.btn_save = QPushButton(self.tr("Manually save transcription"))
         self.btn_save.clicked.connect(self.save_transcript_manual)
         main_layout.addWidget(self.btn_save, alignment=Qt.AlignRight)
 
@@ -466,32 +462,32 @@ class WhisperGUI(QMainWindow):
         if checked:
             try:
                 self.txt_file = open(self.le_txt_path.text(), "w", encoding="utf-8")
-                self.statusBar().showMessage("Écriture temps réel TXT activée", 2000)
+                self.statusBar().showMessage(self.tr("Real-time TXT writing enabled"), 2000)
             except Exception as e:
-                QMessageBox.critical(self, "Erreur TXT", f"Impossible d'ouvrir le fichier: {e}")
+                QMessageBox.critical(self, self.tr("Error TXT"), f"Unable to open file: {e}")
                 self.chk_save_txt.setChecked(False)
         else:
             if hasattr(self, 'txt_file') and self.txt_file:
                 self.txt_file.close()
                 self.txt_file = None
-                self.statusBar().showMessage("Écriture temps réel TXT désactivée", 2000)
+                self.statusBar().showMessage(self.tr("Real-time TXT writing disabled"), 2000)
 
     def toggle_docx_realtime(self, checked):
         """Active/désactive l'écriture temps réel en DOCX"""
         if checked:
             try:
                 self.docx_doc = Document()
-                self.statusBar().showMessage("Écriture temps réel DOCX activée", 2000)
+                self.statusBar().showMessage(self.tr("Real-time DOCX writing enabled"), 2000)
             except Exception as e:
-                QMessageBox.critical(self, "Erreur DOCX", f"Erreur d'initialisation: {e}")
+                QMessageBox.critical(self, self.tr("Error DOCX"), f"Error initialization: {e}")
                 self.chk_save_docx.setChecked(False)
         else:
             if hasattr(self, 'docx_doc') and self.docx_doc:
                 try:
                     self.docx_doc.save(self.le_docx_path.text())
-                    self.statusBar().showMessage("Document DOCX sauvegardé", 2000)
+                    self.statusBar().showMessage(self.tr("Document DOCX saved"), 2000)
                 except Exception as e:
-                    QMessageBox.warning(self, "Avertissement", f"Erreur de sauvegarde DOCX: {e}")
+                    QMessageBox.warning(self, self.tr("Warning"), f"Error saving DOCX: {e}")
                 self.docx_doc = None
 
     def write_realtime(self, text):
@@ -502,7 +498,7 @@ class WhisperGUI(QMainWindow):
                 self.txt_file.flush()  # Force l'écriture immédiate
                 os.fsync(self.txt_file.fileno())
             except Exception as e:
-                print(f"Erreur écriture TXT: {e}")
+                print(f"Error writing TXT: {e}")
 
         if self.docx_doc:
             try:
@@ -510,7 +506,7 @@ class WhisperGUI(QMainWindow):
                 # Sauvegarde périodique du DOCX
                 self.docx_doc.save(self.le_docx_path.text())
             except Exception as e:
-                print(f"Erreur écriture DOCX: {e}")
+                print(f"Error writing DOCX: {e}")
 
     def _hbox(self, widget, button):
         hb = QHBoxLayout()
@@ -521,7 +517,7 @@ class WhisperGUI(QMainWindow):
     def _browse(self, line_edit: QLineEdit, save: bool, filt: str):
         """ Ouvre un QFileDialog getSave ou getOpen """
         dlg = (QFileDialog.getSaveFileName if save else QFileDialog.getOpenFileName)
-        fn, _ = dlg(self, "Sélectionner un fichier", line_edit.text(), filt)
+        fn, _ = dlg(self, self.tr("Select a file"), line_edit.text(), filt)
         if fn:
             line_edit.setText(fn)
 
@@ -529,8 +525,8 @@ class WhisperGUI(QMainWindow):
         """Enregistrement manuel de la transcription (ancienne méthode)"""
         text = self.text_display.toPlainText().strip()
         if not text:
-            QMessageBox.warning(self, "Rien à enregistrer",
-                                "La zone de transcription est vide.")
+            QMessageBox.warning(self, self.tr("Nothing to save"),
+                                self.tr("The transcription area is empty."))
             return
 
         # Découpage en paragraphes
@@ -546,7 +542,7 @@ class WhisperGUI(QMainWindow):
                         f.write(p + "\n\n")
                 saved_files.append("TXT")
             except Exception as e:
-                QMessageBox.critical(self, "Erreur TXT", str(e))
+                QMessageBox.critical(self, self.tr("Error TXT"), str(e))
                 return
 
         # DOCX
@@ -558,15 +554,15 @@ class WhisperGUI(QMainWindow):
                 doc.save(self.le_docx_path.text())
                 saved_files.append("DOCX")
             except Exception as e:
-                QMessageBox.critical(self, "Erreur DOCX", str(e))
+                QMessageBox.critical(self, self.tr("Error DOCX"), str(e))
                 return
 
         if saved_files:
-            QMessageBox.information(self, "Terminé",
+            QMessageBox.information(self, self.tr("OK"),
                                     f"Transcription enregistrée: {', '.join(saved_files)}")
         else:
-            QMessageBox.information(self, "Info",
-                                    "Les fichiers sont déjà en cours d'écriture temps réel")
+            QMessageBox.information(self, self.tr("Info"),
+                                    self.tr("The files are already being written in real-time"))
 
     def init_whisper(self):
         self.recording = False
@@ -586,19 +582,25 @@ class WhisperGUI(QMainWindow):
 
     def open_audio_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Sélectionner un fichier audio", "", "Audio (*.mp3 *.wav *.m4a *.ogg)"
+            self, self.tr("Select an audio file"), "", "Audio (*.mp3 *.wav *.m4a *.ogg)"
         )
         if file_path:
             self.loaded_file_path = file_path
-            self.statusBar().showMessage(f"Fichier chargé : {file_path}", 5000)
+            self.statusBar().showMessage(
+                self.tr("File loaded: {file_path}").format(file_path=file_path), 5000
+            )
 
     @Slot(int, int)
     def _on_file_progress(self, current, total):
-        """Met à jour la barre de progression"""
+        """Update the progress bar"""
         if total > 0:
             progress = int((current * 100) / total)
             self.progress_bar.setValue(progress)
-            self.statusBar().showMessage(f"Transcription en cours... {progress}% ({current}/{total})")
+            self.statusBar().showMessage(
+                self.tr("Transcription in progress... {progress}% ({current}/{total})").format(
+                    progress=progress, current=current, total=total
+                )
+            )
 
     @Slot(str)
     def _on_file_segment(self, text: str):
@@ -612,7 +614,11 @@ class WhisperGUI(QMainWindow):
     def load_model(self):
         model_name = self.model_combo.currentText()
         device_str = self.device_combo.currentText()
-        self.statusBar().showMessage(f"Téléchargement du modèle {model_name} sur {device_str}…")
+        self.statusBar().showMessage(
+            self.tr("Downloading model {model_name} on {device_str}…").format(
+                model_name=model_name, device_str=device_str
+            )
+        )
 
         # Affiche la barre et désactive le combo
         self.progress_bar.setVisible(True)
@@ -630,7 +636,7 @@ class WhisperGUI(QMainWindow):
     def on_model_loaded(self, model):
         self.model = model
         self.current_model_name = self.model_combo.currentText()
-        self.statusBar().showMessage("Modèle chargé !", 3000)
+        self.statusBar().showMessage(self.tr("Model loaded !"), 3000)
         self.progress_bar.setVisible(False)
         self.model_combo.setEnabled(True)
         self.device_combo.setEnabled(True)
@@ -642,7 +648,11 @@ class WhisperGUI(QMainWindow):
 
     @Slot(Exception)
     def on_model_error(self, err):
-        QMessageBox.critical(self, "Erreur", f"Échec du téléchargement : {err}")
+        QMessageBox.critical(
+            self,
+            self.tr("Error"),
+            self.tr("Download failed: {err}").format(err=err)
+        )
         self.progress_bar.setVisible(False)
         self.model_combo.setEnabled(True)
         self.device_combo.setEnabled(True)
@@ -650,7 +660,7 @@ class WhisperGUI(QMainWindow):
     def process_audio(self):
         """Process audio data from the queue"""
         if self.model is None:
-            print("Model not loaded. Please load the model first.")
+            print(self.tr("Model not loaded. Please load the model first."))
             return
 
         audio_buffer = np.array([], dtype=np.float32)
@@ -699,7 +709,6 @@ class WhisperGUI(QMainWindow):
                     # Transcription simplifiée avec OpenAI Whisper officiel
                     result = self.model.transcribe(
                         audio_buffer,
-                        language="fr",
                         fp16=False
                     )
 
@@ -710,12 +719,12 @@ class WhisperGUI(QMainWindow):
                     self.update_text.emit(transcription)
 
                 except Exception as e:
-                    print(f"Error in transcription: {str(e)}")
+                    print(self.tr("Error in transcription: {str(e)}"))
                     traceback.print_exc()
                     continue
 
         except Exception as e:
-            print(f"Error in process_audio: {str(e)}")
+            print(self.tr("Error in process_audio: {str(e)}"))
             traceback.print_exc()
 
     def toggle_recording(self):
@@ -757,14 +766,14 @@ class WhisperGUI(QMainWindow):
         self.grp_exp    .setEnabled(self.chk_expert.isChecked())
 
         self.open_file_button.setEnabled(True)
-        self.record_button.setText("Démarrer l'enregistrement")
+        self.record_button.setText(self.tr("Start recording"))
         # Cache la barre & réinitialise
         self.progress_bar.setVisible(False)
         self.loaded_file_path = None
         # Restauration de l’UI bloquée
         self.model_combo.setEnabled(True)
         self.device_combo.setEnabled(True)
-        QMessageBox.information(self, "Terminé", "Transcription de fichier achevée.")
+        QMessageBox.information(self, self.tr("OK"), self.tr("File transcription finished."))
         self.waveform.stop_animation()
         try: self.trans_file_thread.audio_chunk.disconnect(self.waveform.update_audio_data)
         except: pass
@@ -794,7 +803,7 @@ class WhisperGUI(QMainWindow):
 
         # Désactiver les contrôles durant la transcription
         self.open_file_button.setEnabled(False)
-        self.record_button.setText("Arrêter transcription fichier")
+        self.record_button.setText(self.tr("Stop file transcription"))
         self.model_combo.setEnabled(False)
         self.device_combo.setEnabled(False)
 
@@ -818,7 +827,6 @@ class WhisperGUI(QMainWindow):
             infile    = self.loaded_file_path,
             model     = self.model,
             model_name= self.current_model_name,
-            lang      = "fr",
             chunk_s   = chunk_duration,
             spp       = self.spn_spp.value(),
             beam_size = self.spn_beam.value(),
@@ -832,7 +840,7 @@ class WhisperGUI(QMainWindow):
 
     def start_recording(self):
         if not self.model or self.model_combo.isEnabled()==False:
-            QMessageBox.warning(self, "Patientez", "Le modèle n'est pas encore chargé.")
+            QMessageBox.warning(self, self.tr("Wait"), self.tr("The model is not yet loaded."))
             return
 
         self.text_display.clear()
@@ -847,7 +855,7 @@ class WhisperGUI(QMainWindow):
         self.grp_exp    .setEnabled(False)
 
         self.recording = True
-        self.record_button.setText("Arrêter l'enregistrement")
+        self.record_button.setText(self.tr("Stop recording"))
         self.waveform.start_animation()
 
         # Start processing thread
@@ -871,7 +879,7 @@ class WhisperGUI(QMainWindow):
         # réactive exports
         self.chk_save_txt.setEnabled(True)
         self.chk_save_docx.setEnabled(True)
-        self.record_button.setText("Démarrer l'enregistrement")
+        self.record_button.setText(self.tr("Start recording"))
         self.waveform.stop_animation()
 
         # … après avoir réactivé exports et controls
@@ -1000,11 +1008,31 @@ class WhisperGUI(QMainWindow):
 
 
 
+from PySide6.QtCore import QTranslator, QLocale
+
 def main():
     app = QApplication(sys.argv)
+
+    # — Détection automatique de la langue utilisateur (français/anglais sinon anglais par défaut)
+    locale = QLocale.system().name()   # "fr_FR" ou "en_US" etc.
+    lang_code = locale[:2]             # "fr", "en" etc.
+
+    # — Chargement du bon fichier de traduction
+    translator = QTranslator()
+    qm_path = os.path.join(os.path.dirname(__file__), "i18n", f"whispergui_{lang_code}.qm")
+    if os.path.exists(qm_path) and translator.load(qm_path):
+        app.installTranslator(translator)
+    else:
+        # Si fichier absent, essaye anglais
+        qm_path_en = os.path.join(os.path.dirname(__file__), "i18n", "whispergui_en.qm")
+        if os.path.exists(qm_path_en) and translator.load(qm_path_en):
+            app.installTranslator(translator)
+        # sinon, laisse sans traduction
+
     window = WhisperGUI()
     window.show()
     sys.exit(app.exec())
+
 
 
 if __name__ == "__main__":
